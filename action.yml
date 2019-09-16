@@ -12,4 +12,4 @@ outputs:
     description: 'The url of the client bundle'
 runs:
   using: 'node12'
-  main: 'entrypoint.js'
+  main: 'dist/index.js'
