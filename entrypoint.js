@@ -16,6 +16,8 @@ const main = async () => {
 		const command = core.getInput('command', { required: true });
 
 		if (command === 'publish') {
+			console.log('One must publish');
+			
 			await publish();
 		} else if (command === 'build:ios') {
 			await build('ios');

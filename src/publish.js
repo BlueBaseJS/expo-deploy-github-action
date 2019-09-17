@@ -13,8 +13,11 @@ const { extractBundleUrl } = require('./extract-url');
 const core = require('@actions/core');
 
 const publish = async () => {
+	console.log('in publish');
+	
 	const environment = GITHUB_DEPLOYMENT_ENVIORNMENT;
-
+	console.log('Environment', environment);
+	
 	console.log('->> Creating GitHub Deployment…');
 	const deployment = await createDeployment({
 		environment,
