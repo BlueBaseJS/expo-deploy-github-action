@@ -29407,7 +29407,7 @@ const fs = __webpack_require__(747);
 const path = __webpack_require__(622);
 
 const getVersion = () => {
-	const contents = fs.readFileSync(path.join(REPO_DIRECTORY, 'package.json'));
+	const contents = fs.readFileSync(path.join(REPO_DIRECTORY || './', 'package.json'));
 	const pkg = JSON.parse(contents);
 
 	return pkg.version;
