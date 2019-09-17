@@ -51,7 +51,7 @@ const Octokit = __webpack_require__(529)
 const CORE_PLUGINS = [
   __webpack_require__(372),
   __webpack_require__(19), // deprecated: remove in v17
-  __webpack_require__(190),
+  __webpack_require__(440),
   __webpack_require__(148),
   __webpack_require__(309),
   __webpack_require__(248),
@@ -6532,29 +6532,299 @@ module.exports = {"$id":"pageTimings.json#","$schema":"http://json-schema.org/dr
 /* 188 */,
 /* 189 */,
 /* 190 */
-/***/ (function(module, __unusedexports, __webpack_require__) {
+/***/ (function(__unusedmodule, exports, __webpack_require__) {
 
-module.exports = authenticationPlugin
+"use strict";
 
-const beforeRequest = __webpack_require__(863)
-const requestError = __webpack_require__(991)
-const validate = __webpack_require__(954)
+var Buffer = __webpack_require__(215).Buffer;
 
-function authenticationPlugin (octokit, options) {
-  if (!options.auth) {
-    return
-  }
+// UTF-7 codec, according to https://tools.ietf.org/html/rfc2152
+// See also below a UTF-7-IMAP codec, according to http://tools.ietf.org/html/rfc3501#section-5.1.3
 
-  validate(options.auth)
+exports.utf7 = Utf7Codec;
+exports.unicode11utf7 = 'utf7'; // Alias UNICODE-1-1-UTF-7
+function Utf7Codec(codecOptions, iconv) {
+    this.iconv = iconv;
+};
 
-  const state = {
-    octokit,
-    auth: options.auth
-  }
+Utf7Codec.prototype.encoder = Utf7Encoder;
+Utf7Codec.prototype.decoder = Utf7Decoder;
+Utf7Codec.prototype.bomAware = true;
 
-  octokit.hook.before('request', beforeRequest.bind(null, state))
-  octokit.hook.error('request', requestError.bind(null, state))
+
+// -- Encoding
+
+var nonDirectChars = /[^A-Za-z0-9'\(\),-\.\/:\? \n\r\t]+/g;
+
+function Utf7Encoder(options, codec) {
+    this.iconv = codec.iconv;
 }
+
+Utf7Encoder.prototype.write = function(str) {
+    // Naive implementation.
+    // Non-direct chars are encoded as "+<base64>-"; single "+" char is encoded as "+-".
+    return Buffer.from(str.replace(nonDirectChars, function(chunk) {
+        return "+" + (chunk === '+' ? '' : 
+            this.iconv.encode(chunk, 'utf16-be').toString('base64').replace(/=+$/, '')) 
+            + "-";
+    }.bind(this)));
+}
+
+Utf7Encoder.prototype.end = function() {
+}
+
+
+// -- Decoding
+
+function Utf7Decoder(options, codec) {
+    this.iconv = codec.iconv;
+    this.inBase64 = false;
+    this.base64Accum = '';
+}
+
+var base64Regex = /[A-Za-z0-9\/+]/;
+var base64Chars = [];
+for (var i = 0; i < 256; i++)
+    base64Chars[i] = base64Regex.test(String.fromCharCode(i));
+
+var plusChar = '+'.charCodeAt(0), 
+    minusChar = '-'.charCodeAt(0),
+    andChar = '&'.charCodeAt(0);
+
+Utf7Decoder.prototype.write = function(buf) {
+    var res = "", lastI = 0,
+        inBase64 = this.inBase64,
+        base64Accum = this.base64Accum;
+
+    // The decoder is more involved as we must handle chunks in stream.
+
+    for (var i = 0; i < buf.length; i++) {
+        if (!inBase64) { // We're in direct mode.
+            // Write direct chars until '+'
+            if (buf[i] == plusChar) {
+                res += this.iconv.decode(buf.slice(lastI, i), "ascii"); // Write direct chars.
+                lastI = i+1;
+                inBase64 = true;
+            }
+        } else { // We decode base64.
+            if (!base64Chars[buf[i]]) { // Base64 ended.
+                if (i == lastI && buf[i] == minusChar) {// "+-" -> "+"
+                    res += "+";
+                } else {
+                    var b64str = base64Accum + buf.slice(lastI, i).toString();
+                    res += this.iconv.decode(Buffer.from(b64str, 'base64'), "utf16-be");
+                }
+
+                if (buf[i] != minusChar) // Minus is absorbed after base64.
+                    i--;
+
+                lastI = i+1;
+                inBase64 = false;
+                base64Accum = '';
+            }
+        }
+    }
+
+    if (!inBase64) {
+        res += this.iconv.decode(buf.slice(lastI), "ascii"); // Write direct chars.
+    } else {
+        var b64str = base64Accum + buf.slice(lastI).toString();
+
+        var canBeDecoded = b64str.length - (b64str.length % 8); // Minimal chunk: 2 quads -> 2x3 bytes -> 3 chars.
+        base64Accum = b64str.slice(canBeDecoded); // The rest will be decoded in future.
+        b64str = b64str.slice(0, canBeDecoded);
+
+        res += this.iconv.decode(Buffer.from(b64str, 'base64'), "utf16-be");
+    }
+
+    this.inBase64 = inBase64;
+    this.base64Accum = base64Accum;
+
+    return res;
+}
+
+Utf7Decoder.prototype.end = function() {
+    var res = "";
+    if (this.inBase64 && this.base64Accum.length > 0)
+        res = this.iconv.decode(Buffer.from(this.base64Accum, 'base64'), "utf16-be");
+
+    this.inBase64 = false;
+    this.base64Accum = '';
+    return res;
+}
+
+
+// UTF-7-IMAP codec.
+// RFC3501 Sec. 5.1.3 Modified UTF-7 (http://tools.ietf.org/html/rfc3501#section-5.1.3)
+// Differences:
+//  * Base64 part is started by "&" instead of "+"
+//  * Direct characters are 0x20-0x7E, except "&" (0x26)
+//  * In Base64, "," is used instead of "/"
+//  * Base64 must not be used to represent direct characters.
+//  * No implicit shift back from Base64 (should always end with '-')
+//  * String must end in non-shifted position.
+//  * "-&" while in base64 is not allowed.
+
+
+exports.utf7imap = Utf7IMAPCodec;
+function Utf7IMAPCodec(codecOptions, iconv) {
+    this.iconv = iconv;
+};
+
+Utf7IMAPCodec.prototype.encoder = Utf7IMAPEncoder;
+Utf7IMAPCodec.prototype.decoder = Utf7IMAPDecoder;
+Utf7IMAPCodec.prototype.bomAware = true;
+
+
+// -- Encoding
+
+function Utf7IMAPEncoder(options, codec) {
+    this.iconv = codec.iconv;
+    this.inBase64 = false;
+    this.base64Accum = Buffer.alloc(6);
+    this.base64AccumIdx = 0;
+}
+
+Utf7IMAPEncoder.prototype.write = function(str) {
+    var inBase64 = this.inBase64,
+        base64Accum = this.base64Accum,
+        base64AccumIdx = this.base64AccumIdx,
+        buf = Buffer.alloc(str.length*5 + 10), bufIdx = 0;
+
+    for (var i = 0; i < str.length; i++) {
+        var uChar = str.charCodeAt(i);
+        if (0x20 <= uChar && uChar <= 0x7E) { // Direct character or '&'.
+            if (inBase64) {
+                if (base64AccumIdx > 0) {
+                    bufIdx += buf.write(base64Accum.slice(0, base64AccumIdx).toString('base64').replace(/\//g, ',').replace(/=+$/, ''), bufIdx);
+                    base64AccumIdx = 0;
+                }
+
+                buf[bufIdx++] = minusChar; // Write '-', then go to direct mode.
+                inBase64 = false;
+            }
+
+            if (!inBase64) {
+                buf[bufIdx++] = uChar; // Write direct character
+
+                if (uChar === andChar)  // Ampersand -> '&-'
+                    buf[bufIdx++] = minusChar;
+            }
+
+        } else { // Non-direct character
+            if (!inBase64) {
+                buf[bufIdx++] = andChar; // Write '&', then go to base64 mode.
+                inBase64 = true;
+            }
+            if (inBase64) {
+                base64Accum[base64AccumIdx++] = uChar >> 8;
+                base64Accum[base64AccumIdx++] = uChar & 0xFF;
+
+                if (base64AccumIdx == base64Accum.length) {
+                    bufIdx += buf.write(base64Accum.toString('base64').replace(/\//g, ','), bufIdx);
+                    base64AccumIdx = 0;
+                }
+            }
+        }
+    }
+
+    this.inBase64 = inBase64;
+    this.base64AccumIdx = base64AccumIdx;
+
+    return buf.slice(0, bufIdx);
+}
+
+Utf7IMAPEncoder.prototype.end = function() {
+    var buf = Buffer.alloc(10), bufIdx = 0;
+    if (this.inBase64) {
+        if (this.base64AccumIdx > 0) {
+            bufIdx += buf.write(this.base64Accum.slice(0, this.base64AccumIdx).toString('base64').replace(/\//g, ',').replace(/=+$/, ''), bufIdx);
+            this.base64AccumIdx = 0;
+        }
+
+        buf[bufIdx++] = minusChar; // Write '-', then go to direct mode.
+        this.inBase64 = false;
+    }
+
+    return buf.slice(0, bufIdx);
+}
+
+
+// -- Decoding
+
+function Utf7IMAPDecoder(options, codec) {
+    this.iconv = codec.iconv;
+    this.inBase64 = false;
+    this.base64Accum = '';
+}
+
+var base64IMAPChars = base64Chars.slice();
+base64IMAPChars[','.charCodeAt(0)] = true;
+
+Utf7IMAPDecoder.prototype.write = function(buf) {
+    var res = "", lastI = 0,
+        inBase64 = this.inBase64,
+        base64Accum = this.base64Accum;
+
+    // The decoder is more involved as we must handle chunks in stream.
+    // It is forgiving, closer to standard UTF-7 (for example, '-' is optional at the end).
+
+    for (var i = 0; i < buf.length; i++) {
+        if (!inBase64) { // We're in direct mode.
+            // Write direct chars until '&'
+            if (buf[i] == andChar) {
+                res += this.iconv.decode(buf.slice(lastI, i), "ascii"); // Write direct chars.
+                lastI = i+1;
+                inBase64 = true;
+            }
+        } else { // We decode base64.
+            if (!base64IMAPChars[buf[i]]) { // Base64 ended.
+                if (i == lastI && buf[i] == minusChar) { // "&-" -> "&"
+                    res += "&";
+                } else {
+                    var b64str = base64Accum + buf.slice(lastI, i).toString().replace(/,/g, '/');
+                    res += this.iconv.decode(Buffer.from(b64str, 'base64'), "utf16-be");
+                }
+
+                if (buf[i] != minusChar) // Minus may be absorbed after base64.
+                    i--;
+
+                lastI = i+1;
+                inBase64 = false;
+                base64Accum = '';
+            }
+        }
+    }
+
+    if (!inBase64) {
+        res += this.iconv.decode(buf.slice(lastI), "ascii"); // Write direct chars.
+    } else {
+        var b64str = base64Accum + buf.slice(lastI).toString().replace(/,/g, '/');
+
+        var canBeDecoded = b64str.length - (b64str.length % 8); // Minimal chunk: 2 quads -> 2x3 bytes -> 3 chars.
+        base64Accum = b64str.slice(canBeDecoded); // The rest will be decoded in future.
+        b64str = b64str.slice(0, canBeDecoded);
+
+        res += this.iconv.decode(Buffer.from(b64str, 'base64'), "utf16-be");
+    }
+
+    this.inBase64 = inBase64;
+    this.base64Accum = base64Accum;
+
+    return res;
+}
+
+Utf7IMAPDecoder.prototype.end = function() {
+    var res = "";
+    if (this.inBase64 && this.base64Accum.length > 0)
+        res = this.iconv.decode(Buffer.from(this.base64Accum, 'base64'), "utf16-be");
+
+    this.inBase64 = false;
+    this.base64Accum = '';
+    return res;
+}
+
+
 
 
 /***/ }),
@@ -11922,7 +12192,7 @@ exports.OAuth = OAuth
 var modules = [
     __webpack_require__(162),
     __webpack_require__(797),
-    __webpack_require__(645),
+    __webpack_require__(190),
     __webpack_require__(877),
     __webpack_require__(762),
     __webpack_require__(28),
@@ -19361,7 +19631,33 @@ module.exports = function generate_uniqueItems(it, $keyword, $ruleType) {
 /* 437 */,
 /* 438 */,
 /* 439 */,
-/* 440 */,
+/* 440 */
+/***/ (function(module, __unusedexports, __webpack_require__) {
+
+module.exports = authenticationPlugin
+
+const beforeRequest = __webpack_require__(863)
+const requestError = __webpack_require__(991)
+const validate = __webpack_require__(954)
+
+function authenticationPlugin (octokit, options) {
+  if (!options.auth) {
+    return
+  }
+
+  validate(options.auth)
+
+  const state = {
+    octokit,
+    auth: options.auth
+  }
+
+  octokit.hook.before('request', beforeRequest.bind(null, state))
+  octokit.hook.error('request', requestError.bind(null, state))
+}
+
+
+/***/ }),
 /* 441 */,
 /* 442 */,
 /* 443 */,
@@ -29103,299 +29399,21 @@ module.exports = function generate_items(it, $keyword, $ruleType) {
 /***/ }),
 /* 644 */,
 /* 645 */
-/***/ (function(__unusedmodule, exports, __webpack_require__) {
+/***/ (function(module, __unusedexports, __webpack_require__) {
 
-"use strict";
+const { REPO_DIRECTORY } = __webpack_require__(648);
 
-var Buffer = __webpack_require__(215).Buffer;
+const fs = __webpack_require__(747);
+const path = __webpack_require__(622);
 
-// UTF-7 codec, according to https://tools.ietf.org/html/rfc2152
-// See also below a UTF-7-IMAP codec, according to http://tools.ietf.org/html/rfc3501#section-5.1.3
+const getVersion = () => {
+	const contents = fs.readFileSync(path.join(REPO_DIRECTORY, 'package.json'));
+	const pkg = JSON.parse(contents);
 
-exports.utf7 = Utf7Codec;
-exports.unicode11utf7 = 'utf7'; // Alias UNICODE-1-1-UTF-7
-function Utf7Codec(codecOptions, iconv) {
-    this.iconv = iconv;
+	return pkg.version;
 };
 
-Utf7Codec.prototype.encoder = Utf7Encoder;
-Utf7Codec.prototype.decoder = Utf7Decoder;
-Utf7Codec.prototype.bomAware = true;
-
-
-// -- Encoding
-
-var nonDirectChars = /[^A-Za-z0-9'\(\),-\.\/:\? \n\r\t]+/g;
-
-function Utf7Encoder(options, codec) {
-    this.iconv = codec.iconv;
-}
-
-Utf7Encoder.prototype.write = function(str) {
-    // Naive implementation.
-    // Non-direct chars are encoded as "+<base64>-"; single "+" char is encoded as "+-".
-    return Buffer.from(str.replace(nonDirectChars, function(chunk) {
-        return "+" + (chunk === '+' ? '' : 
-            this.iconv.encode(chunk, 'utf16-be').toString('base64').replace(/=+$/, '')) 
-            + "-";
-    }.bind(this)));
-}
-
-Utf7Encoder.prototype.end = function() {
-}
-
-
-// -- Decoding
-
-function Utf7Decoder(options, codec) {
-    this.iconv = codec.iconv;
-    this.inBase64 = false;
-    this.base64Accum = '';
-}
-
-var base64Regex = /[A-Za-z0-9\/+]/;
-var base64Chars = [];
-for (var i = 0; i < 256; i++)
-    base64Chars[i] = base64Regex.test(String.fromCharCode(i));
-
-var plusChar = '+'.charCodeAt(0), 
-    minusChar = '-'.charCodeAt(0),
-    andChar = '&'.charCodeAt(0);
-
-Utf7Decoder.prototype.write = function(buf) {
-    var res = "", lastI = 0,
-        inBase64 = this.inBase64,
-        base64Accum = this.base64Accum;
-
-    // The decoder is more involved as we must handle chunks in stream.
-
-    for (var i = 0; i < buf.length; i++) {
-        if (!inBase64) { // We're in direct mode.
-            // Write direct chars until '+'
-            if (buf[i] == plusChar) {
-                res += this.iconv.decode(buf.slice(lastI, i), "ascii"); // Write direct chars.
-                lastI = i+1;
-                inBase64 = true;
-            }
-        } else { // We decode base64.
-            if (!base64Chars[buf[i]]) { // Base64 ended.
-                if (i == lastI && buf[i] == minusChar) {// "+-" -> "+"
-                    res += "+";
-                } else {
-                    var b64str = base64Accum + buf.slice(lastI, i).toString();
-                    res += this.iconv.decode(Buffer.from(b64str, 'base64'), "utf16-be");
-                }
-
-                if (buf[i] != minusChar) // Minus is absorbed after base64.
-                    i--;
-
-                lastI = i+1;
-                inBase64 = false;
-                base64Accum = '';
-            }
-        }
-    }
-
-    if (!inBase64) {
-        res += this.iconv.decode(buf.slice(lastI), "ascii"); // Write direct chars.
-    } else {
-        var b64str = base64Accum + buf.slice(lastI).toString();
-
-        var canBeDecoded = b64str.length - (b64str.length % 8); // Minimal chunk: 2 quads -> 2x3 bytes -> 3 chars.
-        base64Accum = b64str.slice(canBeDecoded); // The rest will be decoded in future.
-        b64str = b64str.slice(0, canBeDecoded);
-
-        res += this.iconv.decode(Buffer.from(b64str, 'base64'), "utf16-be");
-    }
-
-    this.inBase64 = inBase64;
-    this.base64Accum = base64Accum;
-
-    return res;
-}
-
-Utf7Decoder.prototype.end = function() {
-    var res = "";
-    if (this.inBase64 && this.base64Accum.length > 0)
-        res = this.iconv.decode(Buffer.from(this.base64Accum, 'base64'), "utf16-be");
-
-    this.inBase64 = false;
-    this.base64Accum = '';
-    return res;
-}
-
-
-// UTF-7-IMAP codec.
-// RFC3501 Sec. 5.1.3 Modified UTF-7 (http://tools.ietf.org/html/rfc3501#section-5.1.3)
-// Differences:
-//  * Base64 part is started by "&" instead of "+"
-//  * Direct characters are 0x20-0x7E, except "&" (0x26)
-//  * In Base64, "," is used instead of "/"
-//  * Base64 must not be used to represent direct characters.
-//  * No implicit shift back from Base64 (should always end with '-')
-//  * String must end in non-shifted position.
-//  * "-&" while in base64 is not allowed.
-
-
-exports.utf7imap = Utf7IMAPCodec;
-function Utf7IMAPCodec(codecOptions, iconv) {
-    this.iconv = iconv;
-};
-
-Utf7IMAPCodec.prototype.encoder = Utf7IMAPEncoder;
-Utf7IMAPCodec.prototype.decoder = Utf7IMAPDecoder;
-Utf7IMAPCodec.prototype.bomAware = true;
-
-
-// -- Encoding
-
-function Utf7IMAPEncoder(options, codec) {
-    this.iconv = codec.iconv;
-    this.inBase64 = false;
-    this.base64Accum = Buffer.alloc(6);
-    this.base64AccumIdx = 0;
-}
-
-Utf7IMAPEncoder.prototype.write = function(str) {
-    var inBase64 = this.inBase64,
-        base64Accum = this.base64Accum,
-        base64AccumIdx = this.base64AccumIdx,
-        buf = Buffer.alloc(str.length*5 + 10), bufIdx = 0;
-
-    for (var i = 0; i < str.length; i++) {
-        var uChar = str.charCodeAt(i);
-        if (0x20 <= uChar && uChar <= 0x7E) { // Direct character or '&'.
-            if (inBase64) {
-                if (base64AccumIdx > 0) {
-                    bufIdx += buf.write(base64Accum.slice(0, base64AccumIdx).toString('base64').replace(/\//g, ',').replace(/=+$/, ''), bufIdx);
-                    base64AccumIdx = 0;
-                }
-
-                buf[bufIdx++] = minusChar; // Write '-', then go to direct mode.
-                inBase64 = false;
-            }
-
-            if (!inBase64) {
-                buf[bufIdx++] = uChar; // Write direct character
-
-                if (uChar === andChar)  // Ampersand -> '&-'
-                    buf[bufIdx++] = minusChar;
-            }
-
-        } else { // Non-direct character
-            if (!inBase64) {
-                buf[bufIdx++] = andChar; // Write '&', then go to base64 mode.
-                inBase64 = true;
-            }
-            if (inBase64) {
-                base64Accum[base64AccumIdx++] = uChar >> 8;
-                base64Accum[base64AccumIdx++] = uChar & 0xFF;
-
-                if (base64AccumIdx == base64Accum.length) {
-                    bufIdx += buf.write(base64Accum.toString('base64').replace(/\//g, ','), bufIdx);
-                    base64AccumIdx = 0;
-                }
-            }
-        }
-    }
-
-    this.inBase64 = inBase64;
-    this.base64AccumIdx = base64AccumIdx;
-
-    return buf.slice(0, bufIdx);
-}
-
-Utf7IMAPEncoder.prototype.end = function() {
-    var buf = Buffer.alloc(10), bufIdx = 0;
-    if (this.inBase64) {
-        if (this.base64AccumIdx > 0) {
-            bufIdx += buf.write(this.base64Accum.slice(0, this.base64AccumIdx).toString('base64').replace(/\//g, ',').replace(/=+$/, ''), bufIdx);
-            this.base64AccumIdx = 0;
-        }
-
-        buf[bufIdx++] = minusChar; // Write '-', then go to direct mode.
-        this.inBase64 = false;
-    }
-
-    return buf.slice(0, bufIdx);
-}
-
-
-// -- Decoding
-
-function Utf7IMAPDecoder(options, codec) {
-    this.iconv = codec.iconv;
-    this.inBase64 = false;
-    this.base64Accum = '';
-}
-
-var base64IMAPChars = base64Chars.slice();
-base64IMAPChars[','.charCodeAt(0)] = true;
-
-Utf7IMAPDecoder.prototype.write = function(buf) {
-    var res = "", lastI = 0,
-        inBase64 = this.inBase64,
-        base64Accum = this.base64Accum;
-
-    // The decoder is more involved as we must handle chunks in stream.
-    // It is forgiving, closer to standard UTF-7 (for example, '-' is optional at the end).
-
-    for (var i = 0; i < buf.length; i++) {
-        if (!inBase64) { // We're in direct mode.
-            // Write direct chars until '&'
-            if (buf[i] == andChar) {
-                res += this.iconv.decode(buf.slice(lastI, i), "ascii"); // Write direct chars.
-                lastI = i+1;
-                inBase64 = true;
-            }
-        } else { // We decode base64.
-            if (!base64IMAPChars[buf[i]]) { // Base64 ended.
-                if (i == lastI && buf[i] == minusChar) { // "&-" -> "&"
-                    res += "&";
-                } else {
-                    var b64str = base64Accum + buf.slice(lastI, i).toString().replace(/,/g, '/');
-                    res += this.iconv.decode(Buffer.from(b64str, 'base64'), "utf16-be");
-                }
-
-                if (buf[i] != minusChar) // Minus may be absorbed after base64.
-                    i--;
-
-                lastI = i+1;
-                inBase64 = false;
-                base64Accum = '';
-            }
-        }
-    }
-
-    if (!inBase64) {
-        res += this.iconv.decode(buf.slice(lastI), "ascii"); // Write direct chars.
-    } else {
-        var b64str = base64Accum + buf.slice(lastI).toString().replace(/,/g, '/');
-
-        var canBeDecoded = b64str.length - (b64str.length % 8); // Minimal chunk: 2 quads -> 2x3 bytes -> 3 chars.
-        base64Accum = b64str.slice(canBeDecoded); // The rest will be decoded in future.
-        b64str = b64str.slice(0, canBeDecoded);
-
-        res += this.iconv.decode(Buffer.from(b64str, 'base64'), "utf16-be");
-    }
-
-    this.inBase64 = inBase64;
-    this.base64Accum = base64Accum;
-
-    return res;
-}
-
-Utf7IMAPDecoder.prototype.end = function() {
-    var res = "";
-    if (this.inBase64 && this.base64Accum.length > 0)
-        res = this.iconv.decode(Buffer.from(this.base64Accum, 'base64'), "utf16-be");
-
-    this.inBase64 = false;
-    this.base64Accum = '';
-    return res;
-}
-
-
+module.exports = getVersion;
 
 
 /***/ }),
@@ -29473,6 +29491,7 @@ SafeBuffer.allocUnsafeSlow = function (size) {
 
 // const meta = require('github-action-meta');
 const slugify = __webpack_require__(950);
+const getVersion = __webpack_require__(645);
 
 const EXPO_CLI_USERNAME = process.env['EXPO_CLI_USERNAME'];
 const EXPO_CLI_PASSWORD = process.env['EXPO_CLI_PASSWORD'];
@@ -29489,6 +29508,8 @@ const GITHUB_REPOSITORY_OWNER = GITHUB_REPOSITORY.split('/')[0]; // meta.git.own
 const GITHUB_REPOSITORY_NAME = GITHUB_REPOSITORY.split('/')[1]; // meta.git.name;
 const GITHUB_BRANCH = process.env['GITHUB_REF'].substring(11); //meta.git.branch;
 
+const VERSION = getVersion();
+
 if (!REPO_DIRECTORY) {
 	console.log('There is no GITHUB_WORKSPACE environment variable');
 	process.exit(1);
@@ -29496,18 +29517,42 @@ if (!REPO_DIRECTORY) {
 
 let GITHUB_DEPLOYMENT_ENVIORNMENT = 'expo-dev';
 
-if (GITHUB_BRANCH === 'staging') {
-	GITHUB_DEPLOYMENT_ENVIORNMENT = 'expo-staging';
-} else if (GITHUB_BRANCH === 'master') {
-	GITHUB_DEPLOYMENT_ENVIORNMENT = 'expo-production';
+switch (GITHUB_BRANCH) {
+	case 'alpha':
+		GITHUB_DEPLOYMENT_ENVIORNMENT = 'expo-alpha';
+		break;
+
+	case 'beta':
+		GITHUB_DEPLOYMENT_ENVIORNMENT = 'expo-beta';
+		break;
+
+	case 'next':
+		GITHUB_DEPLOYMENT_ENVIORNMENT = 'expo-next';
+		break;
+
+	case 'master':
+		GITHUB_DEPLOYMENT_ENVIORNMENT = 'expo-production';
+		break;
 }
 
 let EXPO_RELEASE_CHANNEL = slugify(GITHUB_BRANCH);
 
-if (GITHUB_BRANCH === 'staging') {
-	EXPO_RELEASE_CHANNEL = 'staging';
-} else if (GITHUB_BRANCH === 'master') {
-	EXPO_RELEASE_CHANNEL = 'production';
+switch (GITHUB_BRANCH) {
+	case 'alpha':
+		EXPO_RELEASE_CHANNEL = slugify(`alpha-${VERSION}`);
+		break;
+
+	case 'beta':
+		EXPO_RELEASE_CHANNEL = slugify(`beta-${VERSION}`);
+		break;
+
+	case 'next':
+		EXPO_RELEASE_CHANNEL = 'next';
+		break;
+
+	case 'master':
+		EXPO_RELEASE_CHANNEL = 'production';
+		break;
 }
 
 module.exports = {
@@ -29525,6 +29570,7 @@ module.exports = {
 	GITHUB_REPOSITORY_NAME,
 	GITHUB_BRANCH,
 	REPO_DIRECTORY,
+	VERSION,
 };
 
 
@@ -31290,18 +31336,17 @@ const {
 	GITHUB_REPOSITORY_NAME,
 	GITHUB_TOKEN,
 	REPO_DIRECTORY,
+	VERSION,
 } = __webpack_require__(648);
 const download = __webpack_require__(401);
 const ghReleaseAssets = __webpack_require__(581);
-const fs = __webpack_require__(747);
-const path = __webpack_require__(622);
 
 const uploadReleaseAsset = async (assetUrl, platform) => {
 	const event = await githubEvent();
 	const owner = event.repository.owner.login;
 	const repo = event.repository.name;
 
-	const version = getVersion();
+	const version = VERSION;
 
 	if (!version) {
 		throw Error('No version found in package.json');
@@ -31326,7 +31371,11 @@ const uploadReleaseAsset = async (assetUrl, platform) => {
 
 	await download(assetUrl, local_url);
 
-	console.log('Download complete, uploading to GitHub');
+	console.log(
+		`Download complete, uploading to GitHub release tag: ${`v${version}`} (${
+			release.data.id
+		})`
+	);
 
 	// walkSync(REPO_DIRECTORY);
 	await ghReleaseAssetsAsync({
@@ -31353,13 +31402,6 @@ const ghReleaseAssetsAsync = async opts => {
 			resolve(assets);
 		});
 	});
-};
-
-const getVersion = () => {
-	const contents = fs.readFileSync(path.join(REPO_DIRECTORY, 'package.json'));
-	const pkg = JSON.parse(contents);
-
-	return pkg.version;
 };
 
 module.exports = uploadReleaseAsset;

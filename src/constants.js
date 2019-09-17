@@ -1,5 +1,6 @@
 // const meta = require('github-action-meta');
 const slugify = require('slugify');
+const getVersion = require('./version');
 
 const EXPO_CLI_USERNAME = process.env['EXPO_CLI_USERNAME'];
 const EXPO_CLI_PASSWORD = process.env['EXPO_CLI_PASSWORD'];
@@ -16,6 +17,8 @@ const GITHUB_REPOSITORY_OWNER = GITHUB_REPOSITORY.split('/')[0]; // meta.git.own
 const GITHUB_REPOSITORY_NAME = GITHUB_REPOSITORY.split('/')[1]; // meta.git.name;
 const GITHUB_BRANCH = process.env['GITHUB_REF'].substring(11); //meta.git.branch;
 
+const VERSION = getVersion();
+
 if (!REPO_DIRECTORY) {
 	console.log('There is no GITHUB_WORKSPACE environment variable');
 	process.exit(1);
@@ -23,18 +26,42 @@ if (!REPO_DIRECTORY) {
 
 let GITHUB_DEPLOYMENT_ENVIORNMENT = 'expo-dev';
 
-if (GITHUB_BRANCH === 'staging') {
-	GITHUB_DEPLOYMENT_ENVIORNMENT = 'expo-staging';
-} else if (GITHUB_BRANCH === 'master') {
-	GITHUB_DEPLOYMENT_ENVIORNMENT = 'expo-production';
+switch (GITHUB_BRANCH) {
+	case 'alpha':
+		GITHUB_DEPLOYMENT_ENVIORNMENT = 'expo-alpha';
+		break;
+
+	case 'beta':
+		GITHUB_DEPLOYMENT_ENVIORNMENT = 'expo-beta';
+		break;
+
+	case 'next':
+		GITHUB_DEPLOYMENT_ENVIORNMENT = 'expo-next';
+		break;
+
+	case 'master':
+		GITHUB_DEPLOYMENT_ENVIORNMENT = 'expo-production';
+		break;
 }
 
 let EXPO_RELEASE_CHANNEL = slugify(GITHUB_BRANCH);
 
-if (GITHUB_BRANCH === 'staging') {
-	EXPO_RELEASE_CHANNEL = 'staging';
-} else if (GITHUB_BRANCH === 'master') {
-	EXPO_RELEASE_CHANNEL = 'production';
+switch (GITHUB_BRANCH) {
+	case 'alpha':
+		EXPO_RELEASE_CHANNEL = slugify(`alpha-${VERSION}`);
+		break;
+
+	case 'beta':
+		EXPO_RELEASE_CHANNEL = slugify(`beta-${VERSION}`);
+		break;
+
+	case 'next':
+		EXPO_RELEASE_CHANNEL = 'next';
+		break;
+
+	case 'master':
+		EXPO_RELEASE_CHANNEL = 'production';
+		break;
 }
 
 module.exports = {
@@ -52,4 +79,5 @@ module.exports = {
 	GITHUB_REPOSITORY_NAME,
 	GITHUB_BRANCH,
 	REPO_DIRECTORY,
+	VERSION,
 };

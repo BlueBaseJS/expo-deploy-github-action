@@ -4,18 +4,17 @@ const {
 	GITHUB_REPOSITORY_NAME,
 	GITHUB_TOKEN,
 	REPO_DIRECTORY,
+	VERSION,
 } = require('./constants');
 const download = require('./download');
 const ghReleaseAssets = require('gh-release-assets');
-const fs = require('fs');
-const path = require('path');
 
 const uploadReleaseAsset = async (assetUrl, platform) => {
 	const event = await githubEvent();
 	const owner = event.repository.owner.login;
 	const repo = event.repository.name;
 
-	const version = getVersion();
+	const version = VERSION;
 
 	if (!version) {
 		throw Error('No version found in package.json');
@@ -40,7 +39,11 @@ const uploadReleaseAsset = async (assetUrl, platform) => {
 
 	await download(assetUrl, local_url);
 
-	console.log('Download complete, uploading to GitHub');
+	console.log(
+		`Download complete, uploading to GitHub release tag: ${`v${version}`} (${
+			release.data.id
+		})`
+	);
 
 	// walkSync(REPO_DIRECTORY);
 	await ghReleaseAssetsAsync({
@@ -67,13 +70,6 @@ const ghReleaseAssetsAsync = async opts => {
 			resolve(assets);
 		});
 	});
-};
-
-const getVersion = () => {
-	const contents = fs.readFileSync(path.join(REPO_DIRECTORY, 'package.json'));
-	const pkg = JSON.parse(contents);
-
-	return pkg.version;
 };
 
 module.exports = uploadReleaseAsset;

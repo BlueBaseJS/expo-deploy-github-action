@@ -14,11 +14,13 @@ There are 3 commans supported:
 
 Publishes expo client bundle to expo cloud. Uses GitHub API to set is as a deployment. Set release-channels based on branch:
 
-| Branch  | Release Channel |
-| ------- | --------------- |
-| master  | production      |
-| staging | staging         |
-| (other) | (branch name)   |
+| Branch  | Release Channel | GitHub Enviornment |
+| ------- | --------------- | ------------------ |
+| master  | production      | expo-production    |
+| next    | staging         | expo-next          |
+| alpha   | alpha-[version] | expo-alpha         |
+| beta    | beta-[version]  | expo-beta          |
+| (other) | [branch-name]   | expo-dev           |
 
 #### `build:ios` & `build:android`
 
