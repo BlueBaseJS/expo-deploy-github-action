@@ -2,6 +2,8 @@ const { REPO_DIRECTORY } = require('./constants');
 console.log('Version file');
 
 console.log('REPO_DIRECTORY', REPO_DIRECTORY);
+console.log('CURRENT PATH');
+
 console.log('CURRENT PATH', process.cwd());
 
 const fs = require('fs');
