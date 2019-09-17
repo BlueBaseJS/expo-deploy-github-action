@@ -2476,8 +2476,11 @@ const { extractBundleUrl } = __webpack_require__(67);
 const core = __webpack_require__(470);
 
 const publish = async () => {
+	console.log('in publish');
+	
 	const environment = GITHUB_DEPLOYMENT_ENVIORNMENT;
-
+	console.log('Environment', environment);
+	
 	console.log('->> Creating GitHub Deployment…');
 	const deployment = await createDeployment({
 		environment,
@@ -38762,6 +38765,8 @@ const main = async () => {
 		const command = core.getInput('command', { required: true });
 
 		if (command === 'publish') {
+			console.log('One must publish');
+			
 			await publish();
 		} else if (command === 'build:ios') {
 			await build('ios');
