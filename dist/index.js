@@ -29405,6 +29405,9 @@ module.exports = function generate_items(it, $keyword, $ruleType) {
 /***/ (function(module, __unusedexports, __webpack_require__) {
 
 const { REPO_DIRECTORY } = __webpack_require__(648);
+console.log('Version file');
+
+console.log('REPO_DIRECTORY', REPO_DIRECTORY);
 
 const fs = __webpack_require__(747);
 const path = __webpack_require__(622);
@@ -38748,7 +38751,7 @@ module.exports = /^#!.*/;
 /* 817 */
 /***/ (function(__unusedmodule, __unusedexports, __webpack_require__) {
 
-
+console.log('Hallooo');
 const { GITHUB_TOKEN } = __webpack_require__(648);
 const core = __webpack_require__(470);
 

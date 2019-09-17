@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-
+console.log('Hallooo');
 const { GITHUB_TOKEN } = require('./src/constants');
 const core = require('@actions/core');
 
