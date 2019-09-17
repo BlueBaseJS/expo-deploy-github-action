@@ -40,7 +40,7 @@ const publish = async () => {
 			// },
 		};
 
-		await exec.exec('./node_modules/.bin/expo', [
+		await exec.exec('expo', [
 			'login',
 			'-u',
 			EXPO_CLI_USERNAME,
@@ -49,7 +49,7 @@ const publish = async () => {
 			'--non-interactive',
 		]);
 		await exec.exec(
-			'./node_modules/.bin/expo',
+			'expo',
 			[
 				'publish',
 				'--release-channel',
