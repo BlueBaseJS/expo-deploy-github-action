@@ -29408,12 +29408,15 @@ const { REPO_DIRECTORY } = __webpack_require__(648);
 console.log('Version file');
 
 console.log('REPO_DIRECTORY', REPO_DIRECTORY);
+console.log('CURRENT PATH');
+
+console.log('CURRENT PATH', process.cwd());
 
 const fs = __webpack_require__(747);
 const path = __webpack_require__(622);
 
 const getVersion = () => {
-	const contents = fs.readFileSync(path.join(REPO_DIRECTORY, 'package.json'));
+	const contents = fs.readFileSync(path.join(REPO_DIRECTORY || './', 'package.json'));
 	const pkg = JSON.parse(contents);
 
 	return pkg.version;
