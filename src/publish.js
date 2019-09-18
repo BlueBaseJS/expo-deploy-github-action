@@ -46,7 +46,7 @@ const publish = async () => {
 			'--non-interactive',
 		]);
 		await exec.exec(
-			'./node_modules/.bin/expo',
+			'sudo ./node_modules/.bin/expo',
 			[
 				'publish',
 				'--release-channel',
