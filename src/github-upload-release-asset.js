@@ -20,11 +20,17 @@ const uploadReleaseAsset = async (assetUrl, platform) => {
 		throw Error('No version found in package.json');
 	}
 
+	console.log(`->> Finding version: ${version} in GitHub releases`);
+
 	const release = await api.repos.getReleaseByTag({
 		owner,
 		repo,
 		tag: `v${version}`,
 	});
+
+	console.log(
+		`->> GitHub Release found. ID: ${release.data.id}, Upload URL: ${release.data.upload_url}`
+	);
 
 	const upload_url = release.data.upload_url;
 
@@ -35,12 +41,12 @@ const uploadReleaseAsset = async (assetUrl, platform) => {
 	const extension = platform === 'android' ? 'apk' : 'ipa';
 	const local_url = `${REPO_DIRECTORY}/${GITHUB_REPOSITORY_NAME}.${extension}`;
 
-	console.log(`Attempting to download file at: ${local_url}`);
+	console.log(`->> Attempting to download file at: ${local_url}`);
 
 	await download(assetUrl, local_url);
 
 	console.log(
-		`Download complete, uploading to GitHub release tag: ${`v${version}`} (${
+		`->> Download complete, uploading to GitHub release tag: ${`v${version}`} (${
 			release.data.id
 		})`
 	);
@@ -57,7 +63,7 @@ const uploadReleaseAsset = async (assetUrl, platform) => {
 		],
 	});
 
-	console.log('GitHub Upload Complete');
+	console.log('->> GitHub Upload Complete');
 };
 
 const ghReleaseAssetsAsync = async opts => {
