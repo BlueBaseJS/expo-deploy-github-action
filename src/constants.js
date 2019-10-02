@@ -2,6 +2,10 @@
 const slugify = require('slugify');
 const getVersion = require('./version');
 
+function makeSlug(str) {
+	slugify(str.replace('/', '-'), { lower: true });
+}
+
 const EXPO_CLI_USERNAME = process.env['EXPO_CLI_USERNAME'];
 const EXPO_CLI_PASSWORD = process.env['EXPO_CLI_PASSWORD'];
 const GITHUB_TOKEN = process.env['GITHUB_TOKEN'];
@@ -44,15 +48,15 @@ switch (GITHUB_BRANCH) {
 		break;
 }
 
-let EXPO_RELEASE_CHANNEL = slugify(GITHUB_BRANCH);
+let EXPO_RELEASE_CHANNEL = makeSlug(GITHUB_BRANCH);
 
 switch (GITHUB_BRANCH) {
 	case 'alpha':
-		EXPO_RELEASE_CHANNEL = slugify(`alpha-${VERSION}`);
+		EXPO_RELEASE_CHANNEL = makeSlug(`alpha-${VERSION}`);
 		break;
 
 	case 'beta':
-		EXPO_RELEASE_CHANNEL = slugify(`beta-${VERSION}`);
+		EXPO_RELEASE_CHANNEL = makeSlug(`beta-${VERSION}`);
 		break;
 
 	case 'next':
