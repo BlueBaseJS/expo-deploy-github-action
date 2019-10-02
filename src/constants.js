@@ -3,7 +3,7 @@ const slugify = require('slugify');
 const getVersion = require('./version');
 
 function makeSlug(str) {
-	slugify(str.replace('/', '-'), { lower: true });
+	return slugify(str.replace('/', '-'), { lower: true });
 }
 
 const EXPO_CLI_USERNAME = process.env['EXPO_CLI_USERNAME'];
