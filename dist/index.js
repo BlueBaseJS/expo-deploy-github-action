@@ -29493,6 +29493,10 @@ SafeBuffer.allocUnsafeSlow = function (size) {
 const slugify = __webpack_require__(950);
 const getVersion = __webpack_require__(645);
 
+function makeSlug(str) {
+	return slugify(str.replace('/', '-'), { lower: true });
+}
+
 const EXPO_CLI_USERNAME = process.env['EXPO_CLI_USERNAME'];
 const EXPO_CLI_PASSWORD = process.env['EXPO_CLI_PASSWORD'];
 const GITHUB_TOKEN = process.env['GITHUB_TOKEN'];
@@ -29535,15 +29539,15 @@ switch (GITHUB_BRANCH) {
 		break;
 }
 
-let EXPO_RELEASE_CHANNEL = slugify(GITHUB_BRANCH);
+let EXPO_RELEASE_CHANNEL = makeSlug(GITHUB_BRANCH);
 
 switch (GITHUB_BRANCH) {
 	case 'alpha':
-		EXPO_RELEASE_CHANNEL = slugify(`alpha-${VERSION}`);
+		EXPO_RELEASE_CHANNEL = makeSlug(`alpha-${VERSION}`);
 		break;
 
 	case 'beta':
-		EXPO_RELEASE_CHANNEL = slugify(`beta-${VERSION}`);
+		EXPO_RELEASE_CHANNEL = makeSlug(`beta-${VERSION}`);
 		break;
 
 	case 'next':
@@ -31352,11 +31356,17 @@ const uploadReleaseAsset = async (assetUrl, platform) => {
 		throw Error('No version found in package.json');
 	}
 
+	console.log(`->> Finding version: ${version} in GitHub releases`);
+
 	const release = await api.repos.getReleaseByTag({
 		owner,
 		repo,
 		tag: `v${version}`,
 	});
+
+	console.log(
+		`->> GitHub Release found. ID: ${release.data.id}, Upload URL: ${release.data.upload_url}`
+	);
 
 	const upload_url = release.data.upload_url;
 
@@ -31367,12 +31377,12 @@ const uploadReleaseAsset = async (assetUrl, platform) => {
 	const extension = platform === 'android' ? 'apk' : 'ipa';
 	const local_url = `${REPO_DIRECTORY}/${GITHUB_REPOSITORY_NAME}.${extension}`;
 
-	console.log(`Attempting to download file at: ${local_url}`);
+	console.log(`->> Attempting to download file at: ${local_url}`);
 
 	await download(assetUrl, local_url);
 
 	console.log(
-		`Download complete, uploading to GitHub release tag: ${`v${version}`} (${
+		`->> Download complete, uploading to GitHub release tag: ${`v${version}`} (${
 			release.data.id
 		})`
 	);
@@ -31389,7 +31399,7 @@ const uploadReleaseAsset = async (assetUrl, platform) => {
 		],
 	});
 
-	console.log('GitHub Upload Complete');
+	console.log('->> GitHub Upload Complete');
 };
 
 const ghReleaseAssetsAsync = async opts => {
