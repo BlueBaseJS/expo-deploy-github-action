@@ -64,7 +64,7 @@ switch (GITHUB_BRANCH) {
 		break;
 
 	case 'master':
-		EXPO_RELEASE_CHANNEL = 'production';
+		EXPO_RELEASE_CHANNEL = 'default';
 		break;
 }
 
