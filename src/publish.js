@@ -36,7 +36,7 @@ const publish = async () => {
 			// 	myError += data.toString();
 			// },
 		};
-		console.log('->> Publishing assets bundle on Expo…');
+		console.log('->> Publishing app bundle on Expo…');
 
 		await exec.exec('./node_modules/.bin/expo', [
 			'login',
@@ -46,6 +46,8 @@ const publish = async () => {
 			EXPO_CLI_PASSWORD,
 			'--non-interactive',
 		]);
+		console.log('->> Publishing assets bundle on Expo…');
+
 		await exec.exec(
 			'./node_modules/.bin/expo',
 			[
