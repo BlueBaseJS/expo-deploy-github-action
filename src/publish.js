@@ -36,6 +36,7 @@ const publish = async () => {
 			// 	myError += data.toString();
 			// },
 		};
+		console.log('->> Publishing assets bundle on Expo…');
 
 		await exec.exec('./node_modules/.bin/expo', [
 			'login',
@@ -56,6 +57,7 @@ const publish = async () => {
 			],
 			options
 		);
+		console.log('->> Publishing android app bundle on Expo…');
 
 		await exec.exec(
 			'./node_modules/.bin/expo',
@@ -68,6 +70,7 @@ const publish = async () => {
 			],
 			options
 		);
+		console.log('->> Publishing ios app bundle on Expo…');
 
 		await exec.exec(
 			'./node_modules/.bin/expo',
