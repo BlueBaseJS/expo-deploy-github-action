@@ -57,6 +57,30 @@ const publish = async () => {
 			options
 		);
 
+		await exec.exec(
+			'./node_modules/.bin/expo',
+			[
+				'build:android',
+				'--release-channel',
+				EXPO_RELEASE_CHANNEL,
+				'--config',
+				'./build/expo/app.json',
+			],
+			options
+		);
+
+		await exec.exec(
+			'./node_modules/.bin/expo',
+			[
+				'build:ios',
+				'--release-channel',
+				EXPO_RELEASE_CHANNEL,
+				'--config',
+				'./build/expo/app.json',
+			],
+			options
+		);
+
 		const bundleUrl = extractBundleUrl(output);
 
 		if (!bundleUrl) {
