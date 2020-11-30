@@ -46,19 +46,7 @@ const publish = async () => {
 			EXPO_CLI_PASSWORD,
 			'--non-interactive',
 		]);
-		console.log('->> Publishing assets bundle on Expo…');
 
-		await exec.exec(
-			'./node_modules/.bin/expo',
-			[
-				'publish',
-				'--release-channel',
-				EXPO_RELEASE_CHANNEL,
-				'--config',
-				'./build/expo/app.json',
-			],
-			options
-		);
 		console.log('->> Publishing android app bundle on Expo…');
 
 		await exec.exec(
