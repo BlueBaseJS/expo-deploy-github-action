@@ -59,32 +59,32 @@ const publish = async () => {
 			],
 			options
 		);
-		console.log('->> Publishing android app bundle on Expo…');
+		// console.log('->> Publishing android app bundle on Expo…');
 
-		await exec.exec(
-			'./node_modules/.bin/expo',
-			[
-				'build:android',
-				'--release-channel',
-				EXPO_RELEASE_CHANNEL,
-				'--config',
-				'./build/expo/app.json',
-			],
-			options
-		);
-		console.log('->> Publishing ios app bundle on Expo…');
+		// await exec.exec(
+		// 	'./node_modules/.bin/expo',
+		// 	[
+		// 		'build:android',
+		// 		'--release-channel',
+		// 		EXPO_RELEASE_CHANNEL,
+		// 		'--config',
+		// 		'./build/expo/app.json',
+		// 	],
+		// 	options
+		// );
+		// console.log('->> Publishing ios app bundle on Expo…');
 
-		await exec.exec(
-			'./node_modules/.bin/expo',
-			[
-				'build:ios',
-				'--release-channel',
-				EXPO_RELEASE_CHANNEL,
-				'--config',
-				'./build/expo/app.json',
-			],
-			options
-		);
+		// await exec.exec(
+		// 	'./node_modules/.bin/expo',
+		// 	[
+		// 		'build:ios',
+		// 		'--release-channel',
+		// 		EXPO_RELEASE_CHANNEL,
+		// 		'--config',
+		// 		'./build/expo/app.json',
+		// 	],
+		// 	options
+		// );
 
 		const bundleUrl = extractBundleUrl(output);
 
